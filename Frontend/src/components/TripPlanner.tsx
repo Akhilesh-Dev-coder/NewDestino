@@ -7,6 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import axios from "@/api/axiosInstance";
 
+import LocationMap from "@/components/LocationMap";
+import { OpenStreetMapProvider } from "leaflet-geosearch";
+
 interface TripData {
   tripId?: number; // Ensure tripId is optional
   destination: string;
@@ -42,6 +45,14 @@ const TripPlanner = ({ tripData }: { tripData: TripData }) => {
   });
   const [selectedDate, setSelectedDate] = useState("");
 
+  // Map state for trip destination
+  const [destinationCoords, setDestinationCoords] = useState<[number, number] | null>(null);
+  const [destinationLabel, setDestinationLabel] = useState<string>("");
+
+  // Map state for activity location input
+  const [mapCoords, setMapCoords] = useState<[number, number] | null>(null);
+  const [mapLabel, setMapLabel] = useState<string>("");
+
   const generateDateRange = () => {
     const start = new Date(tripData.startDate);
     const end = new Date(tripData.endDate);
@@ -54,6 +65,25 @@ const TripPlanner = ({ tripData }: { tripData: TripData }) => {
   };
 
   const dates = generateDateRange();
+
+  // Geocode trip destination on mount or when tripData.destination changes
+  useEffect(() => {
+    if (!tripData.destination) return;
+
+    const provider = new OpenStreetMapProvider();
+    provider
+      .search({ query: tripData.destination })
+      .then((results) => {
+        if (results.length > 0) {
+          const { x: lng, y: lat, label } = results[0];
+          setDestinationCoords([lat, lng]);
+          setDestinationLabel(label);
+        }
+      })
+      .catch((err) => {
+        console.error("Error geocoding destination:", err);
+      });
+  }, [tripData.destination]);
 
   useEffect(() => {
     const fetchActivities = async () => {
@@ -215,6 +245,18 @@ const TripPlanner = ({ tripData }: { tripData: TripData }) => {
         </CardContent>
       </Card>
 
+      {/* Map showing trip destination */}
+      {destinationCoords && (
+        <Card className="shadow-card-travel">
+          <CardHeader>
+            <CardTitle>Destination Location</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LocationMap coords={destinationCoords} label={destinationLabel} />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Add Activity Form */}
       <Card className="shadow-card-travel">
         <CardHeader>
@@ -266,110 +308,114 @@ const TripPlanner = ({ tripData }: { tripData: TripData }) => {
               <Input
                 placeholder="Where?"
                 value={newActivity.location}
-                onChange={(e) => setNewActivity((prev) => ({ ...prev, location: e.target.value }))}
+                onChange={(e) =>
+                  setNewActivity((prev) => ({ ...prev, location: e.target.value }))
+                }
+                onBlur={async () => {
+                  if (!newActivity.location) return;
+                  const provider = new OpenStreetMapProvider();
+                  try {
+                    const results = await provider.search({ query: newActivity.location });
+                    if (results.length > 0) {
+                      const { x: lng, y: lat, label } = results[0];
+                      setMapCoords([lat, lng]);
+                      setMapLabel(label);
+                    }
+                  } catch (err) {
+                    console.error("Geocode failed:", err);
+                  }
+                }}
                 className="mt-1"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium">Notes (optional)</label>
-              <Textarea
-                placeholder="Additional details..."
-                value={newActivity.notes}
-                onChange={(e) => setNewActivity((prev) => ({ ...prev, notes: e.target.value }))}
-                className="mt-1"
-                rows={2}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Estimated Cost ($)</label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={newActivity.estimatedCost}
-                onChange={(e) => setNewActivity((prev) => ({ ...prev, estimatedCost: e.target.value }))}
-                className="mt-1"
-              />
-            </div>
+          <div>
+            <label className="text-sm font-medium">Notes</label>
+            <Textarea
+              placeholder="Additional notes"
+              value={newActivity.notes}
+              onChange={(e) => setNewActivity((prev) => ({ ...prev, notes: e.target.value }))}
+              className="mt-1"
+              rows={2}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Estimated Cost</label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="USD"
+              value={newActivity.estimatedCost}
+              onChange={(e) => setNewActivity((prev) => ({ ...prev, estimatedCost: e.target.value }))}
+              className="mt-1"
+            />
           </div>
 
           <Button
             onClick={addActivity}
-            variant="travel"
-            className="w-full"
             disabled={!selectedDate || !newActivity.activity}
+            className="w-full"
           >
             Add Activity
           </Button>
         </CardContent>
       </Card>
 
-      {/* Itinerary Display */}
+      {/* Activity Location Map (shows last searched activity location) */}
+      {mapCoords && (
+        <Card className="shadow-card-travel">
+          <CardHeader>
+            <CardTitle>Activity Location Preview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LocationMap coords={mapCoords} label={mapLabel} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Itinerary list */}
       <div className="space-y-4">
-        <h3 className="text-xl font-semibold text-travel-blue">Your Itinerary</h3>
-        {itinerary.length === 0 ? ( 
-          <Card className="shadow-card-travel">
-            <CardContent className="p-8 text-center">
-              <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">Start planning your trip by adding activities above!</p>
-            </CardContent>
-          </Card>
-        ) : (
-          itinerary.map((day) => (
-            <Card key={day.date} className="shadow-card-travel">
+        {itinerary
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .map((dayPlan) => (
+            <Card key={dayPlan.date} className="shadow-card-travel">
               <CardHeader>
-                <CardTitle className="text-lg text-travel-blue">
-                  {formatDate(day.date)}
-                </CardTitle>
+                <CardTitle>{formatDate(dayPlan.date)}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {day.activities.map((activity) => (
-                    <div
-                      key={activity.id}
-                      className="flex items-start justify-between p-3 border rounded-lg bg-gradient-card"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          {activity.time && (
-                            <Badge variant="outline" className="text-xs">
-                              {activity.time}
-                            </Badge>
-                          )}
-                          <h4 className="font-semibold">{activity.activity}</h4>
-                          {activity.estimatedCost && (
-                            <Badge variant="secondary" className="text-xs">
-                              ${activity.estimatedCost}
-                            </Badge>
-                          )}
-                        </div>
-                        {activity.location && (
-                          <p className="text-sm text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {activity.location}
-                          </p>
-                        )}
-                        {activity.notes && (
-                          <p className="text-sm text-muted-foreground mt-1">{activity.notes}</p>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeActivity(day.date, activity.id)}
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                {dayPlan.activities.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="border-b border-muted py-2 flex justify-between items-center"
+                  >
+                    <div>
+                      <p className="font-semibold">
+                        {activity.time} - {activity.activity}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{activity.location}</p>
+                      {activity.notes && (
+                        <p className="text-xs text-muted-foreground italic">{activity.notes}</p>
+                      )}
+                      {activity.estimatedCost !== undefined && (
+                        <Badge className="mt-1">${activity.estimatedCost.toFixed(2)}</Badge>
+                      )}
                     </div>
-                  ))}
-                </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeActivity(dayPlan.date, activity.id)}
+                      aria-label="Remove activity"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
+                  </div>
+                ))}
               </CardContent>
             </Card>
-          ))
-        )}
+          ))}
       </div>
     </div>
   );
