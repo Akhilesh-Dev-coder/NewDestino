@@ -484,6 +484,18 @@ app.delete('/api/admin/trips/:id', async (req, res) => {
 });
 
 
+// DELETE activity (admin)
+app.delete('/api/admin/activities/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db('activities').where({ id }).del();
+    res.status(200).json({ success: true, message: 'Activity deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to delete activity', error: err.message });
+  }
+});
+
+
 // =================== SERVER START ===================
 const PORT = process.env.PORT || 1833;
 app.listen(PORT, () => {

@@ -364,18 +364,6 @@ const TripPlanner = ({ tripData }: { tripData: TripData }) => {
         </CardContent>
       </Card>
 
-      {/* Activity Location Map (shows last searched activity location) */}
-      {mapCoords && (
-        <Card className="shadow-card-travel">
-          <CardHeader>
-            <CardTitle>Activity Location Preview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <LocationMap coords={mapCoords} label={mapLabel} />
-          </CardContent>
-        </Card>
-      )}
-
       {/* Itinerary list */}
       <div className="space-y-4">
         {itinerary
